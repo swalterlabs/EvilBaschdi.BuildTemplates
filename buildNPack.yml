@@ -53,6 +53,7 @@ jobs:
               arguments: >
                 --configuration $(BuildConfiguration)
                 --framework ${{ parameters.framework }}
+                --parallel none
                 --coverage
                 --coverage-output-format cobertura
                 --coverage-output "$(Agent.TempDirectory)/TestResults/${{ project }}/coverage.cobertura.xml"

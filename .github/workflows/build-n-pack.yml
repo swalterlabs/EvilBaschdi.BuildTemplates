@@ -1,0 +1,98 @@
+name: Build and pack .NET projects
+
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: JSON array of project names.
+        required: true
+        type: string
+      framework:
+        description: Target framework used when running tests.
+        required: true
+        type: string
+      projects-parent-directory:
+        description: Parent directory of the projects, including a trailing slash when applicable.
+        required: true
+        type: string
+      tests-parent-directory:
+        description: Parent directory of the test projects, including a trailing slash when applicable.
+        required: true
+        type: string
+      artifact-name:
+        description: Name of the package artifact.
+        default: Nuget-Package
+        required: false
+        type: string
+
+jobs:
+  build-and-pack:
+    runs-on: windows-latest
+    env:
+      BUILD_CONFIGURATION: Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore, build, test, and pack projects
+        shell: pwsh
+        env:
+          PROJECTS: ${{ inputs.projects }}
+          PROJECTS_PARENT_DIRECTORY: ${{ inputs.projects-parent-directory }}
+          TESTS_PARENT_DIRECTORY: ${{ inputs.tests-parent-directory }}
+          TEST_FRAMEWORK: ${{ inputs.framework }}
+        run: |
+          $projects = $env:PROJECTS | ConvertFrom-Json
+          $packagesDirectory = Join-Path $env:RUNNER_TEMP packages
+          $testResultsDirectory = Join-Path $env:RUNNER_TEMP TestResults
+          New-Item -ItemType Directory -Force -Path $packagesDirectory, $testResultsDirectory | Out-Null
+
+          foreach ($project in $projects) {
+            $projectFile = "$env:PROJECTS_PARENT_DIRECTORY$project/$project.csproj"
+            $testProjectFile = "$env:TESTS_PARENT_DIRECTORY$project.Tests/$project.Tests.csproj"
+
+            dotnet restore $projectFile --configfile NuGet.config
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            dotnet build $projectFile --configuration $env:BUILD_CONFIGURATION --no-restore
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            dotnet test $testProjectFile --configuration $env:BUILD_CONFIGURATION --framework --parallel none $env:TEST_FRAMEWORK --coverage --coverage-output-format cobertura --coverage-output "$testResultsDirectory/$project/coverage.cobertura.xml"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "Tests failed for $project; continuing to match the Azure DevOps template."
+            }
+
+            $packArguments = @(
+              "pack", $projectFile,
+              "--configuration", $env:BUILD_CONFIGURATION,
+              "--output", $packagesDirectory,
+              "--no-build"
+            )
+            if ($env:GITHUB_REF -ne "refs/heads/main") {
+              $packArguments += "--version-suffix"
+              $packArguments += $env:GITHUB_REF_NAME
+            }
+
+            dotnet @packArguments
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Upload test coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-coverage
+          path: ${{ runner.temp }}\TestResults\**\coverage.cobertura.xml
+          if-no-files-found: warn
+
+      - name: Upload NuGet packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}\packages\*.nupkg
+          if-no-files-found: warn

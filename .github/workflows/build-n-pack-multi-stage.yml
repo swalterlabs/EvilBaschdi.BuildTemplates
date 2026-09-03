@@ -1,0 +1,51 @@
+name: Build, pack, and publish .NET projects
+
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: JSON array of project names.
+        required: true
+        type: string
+      framework:
+        required: true
+        type: string
+      projects-parent-directory:
+        required: true
+        type: string
+      tests-parent-directory:
+        required: true
+        type: string
+      artifact-name:
+        default: Nuget-Package
+        required: false
+        type: string
+      azure-artifacts-source:
+        default: ''
+        required: false
+        type: string
+    secrets:
+      AZURE_ARTIFACTS_PAT:
+        required: false
+      MYGET_API_KEY:
+        required: false
+      CODEBERG_API_KEY:
+        required: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-n-pack.yml
+    with:
+      projects: ${{ inputs.projects }}
+      framework: ${{ inputs.framework }}
+      projects-parent-directory: ${{ inputs.projects-parent-directory }}
+      tests-parent-directory: ${{ inputs.tests-parent-directory }}
+      artifact-name: ${{ inputs.artifact-name }}
+
+  publish:
+    needs: build
+    uses: ./.github/workflows/push-nuget.yml
+    with:
+      artifact-name: ${{ inputs.artifact-name }}
+      azure-artifacts-source: ${{ inputs.azure-artifacts-source }}
+    secrets: inherit

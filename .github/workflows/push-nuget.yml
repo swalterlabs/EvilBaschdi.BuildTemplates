@@ -1,0 +1,85 @@
+name: Publish NuGet packages
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the package artifact to publish.
+        default: Nuget-Package
+        required: false
+        type: string
+      azure-artifacts-source:
+        description: Azure Artifacts NuGet v3 source URL.
+        default: ''
+        required: false
+        type: string
+      myget-source:
+        description: MyGet NuGet v3 source URL.
+        default: https://www.myget.org/F/evilbaschdi/api/v3/index.json
+        required: false
+        type: string
+      codeberg-source:
+        description: Codeberg NuGet v3 source URL.
+        default: https://codeberg.org/api/packages/evilbaschdi/nuget/index.json
+        required: false
+        type: string
+    secrets:
+      AZURE_ARTIFACTS_PAT:
+        required: false
+      MYGET_API_KEY:
+        required: false
+      CODEBERG_API_KEY:
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download NuGet packages
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: packages
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Push to Azure Artifacts
+        continue-on-error: true
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.AZURE_ARTIFACTS_PAT }}
+          NUGET_SOURCE: ${{ inputs.azure-artifacts-source }}
+        run: |
+          if [ -z "$NUGET_AUTH_TOKEN" ] || [ -z "$NUGET_SOURCE" ]; then
+            echo "Azure Artifacts publishing is not configured; skipping."
+            exit 0
+          fi
+          dotnet nuget push 'packages/*.nupkg' --source "$NUGET_SOURCE" --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
+
+      - name: Push to MyGet
+        continue-on-error: true
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.MYGET_API_KEY }}
+          NUGET_SOURCE: ${{ inputs.myget-source }}
+        run: |
+          if [ -z "$NUGET_AUTH_TOKEN" ]; then
+            echo "MyGet publishing is not configured; skipping."
+            exit 0
+          fi
+          dotnet nuget push 'packages/*.nupkg' --source "$NUGET_SOURCE" --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
+
+      - name: Push to Codeberg
+        continue-on-error: true
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.CODEBERG_API_KEY }}
+          NUGET_SOURCE: ${{ inputs.codeberg-source }}
+        run: |
+          if [ -z "$NUGET_AUTH_TOKEN" ]; then
+            echo "Codeberg publishing is not configured; skipping."
+            exit 0
+          fi
+          dotnet nuget push 'packages/*.nupkg' --source "$NUGET_SOURCE" --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate

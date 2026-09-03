@@ -1,0 +1,68 @@
+name: Build and publish .NET ZIP
+
+on:
+  workflow_call:
+    inputs:
+      project-name:
+        required: true
+        type: string
+      framework:
+        required: true
+        type: string
+      artifact-name:
+        default: ZipArchive
+        required: false
+        type: string
+
+jobs:
+  build-and-zip:
+    runs-on: windows-latest
+    env:
+      BUILD_CONFIGURATION: Release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET from global.json
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore and build
+        shell: pwsh
+        run: |
+          dotnet restore "${{ inputs.project-name }}/${{ inputs.project-name }}.csproj" --configfile NuGet.config
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet build "${{ inputs.project-name }}/${{ inputs.project-name }}.csproj" --configuration $env:BUILD_CONFIGURATION --no-restore
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test with coverage
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $testResultsDirectory = Join-Path $env:RUNNER_TEMP TestResults
+          New-Item -ItemType Directory -Force -Path $testResultsDirectory | Out-Null
+          dotnet test "${{ inputs.project-name }}/${{ inputs.project-name }}.Tests/${{ inputs.project-name }}.Tests.csproj" --configuration $env:BUILD_CONFIGURATION --framework "${{ inputs.framework }}" -p:TestingPlatformDotnetTestSupport=true -p:TestingPlatformCommandLineArguments="--report-trx --report-trx-filename ${{ inputs.project-name }}.trx --results-directory $testResultsDirectory --coverage --coverage-output-format cobertura --coverage-output ${{ inputs.project-name }}.cobertura.xml"
+
+      - name: Publish application
+        shell: pwsh
+        run: |
+          $publishDirectory = Join-Path $env:RUNNER_TEMP Output
+          dotnet publish "${{ inputs.project-name }}/${{ inputs.project-name }}.csproj" --configuration $env:BUILD_CONFIGURATION --output $publishDirectory --framework "${{ inputs.framework }}" --self-contained false --no-build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "$publishDirectory\*" -DestinationPath "${{ runner.temp }}\${{ inputs.project-name }}.zip" -Force
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}-test-results
+          path: ${{ runner.temp }}\TestResults\*
+          if-no-files-found: warn
+
+      - name: Upload ZIP archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: ${{ runner.temp }}\${{ inputs.project-name }}.zip
+          if-no-files-found: warn

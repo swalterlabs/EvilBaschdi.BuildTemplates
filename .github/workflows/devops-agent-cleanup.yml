@@ -1,0 +1,36 @@
+name: Clean self-hosted runner
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: Runner label for the self-hosted runner to clean.
+        default: self-hosted
+        required: false
+        type: string
+      work-directory:
+        description: Azure DevOps agent work directory.
+        required: true
+        type: string
+
+jobs:
+  cleanup:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Remove Azure DevOps work directories and stale NuGet packages
+        shell: bash
+        env:
+          WORK_DIRECTORY: ${{ inputs.work-directory }}
+        run: |
+          set -uo pipefail
+          tool_directory="$WORK_DIRECTORY/_tool"
+
+          find "$WORK_DIRECTORY" -mindepth 1 -maxdepth 1 -type d -regex '.*/[0-9]+' -exec rm -rf -- {} +
+          if [ -d "$tool_directory/dotnet" ]; then
+            find "$tool_directory/dotnet" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+          fi
+
+          nuget_path="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+          if [ -d "$nuget_path" ]; then
+            find "$nuget_path" -type d -mtime +14 -exec rm -rf -- {} +
+          fi
