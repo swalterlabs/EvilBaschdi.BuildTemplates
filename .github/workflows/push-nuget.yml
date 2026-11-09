@@ -33,9 +33,7 @@ on:
 
 jobs:
   publish:
-    runs-on:
-      group: Default
-      labels: linux
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 

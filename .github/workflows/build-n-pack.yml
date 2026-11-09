@@ -27,9 +27,7 @@ on:
 
 jobs:
   build-and-pack:
-    runs-on:
-      group: Default
-      labels: linux
+    runs-on: ubuntu-latest
     env:
       BUILD_CONFIGURATION: Release
     steps:
