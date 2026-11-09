@@ -118,6 +118,7 @@ The multi-stage workflow accepts these additional inputs:
 | Input                    | Description                           |
 | ------------------------ | ------------------------------------- |
 | `azure-artifacts-source` | Optional Azure Artifacts NuGet v3 feed URL |
+| `myget-source`           | Optional MyGet NuGet v3 feed URL |
 | `enable-codeql`          | Run CodeQL analysis during the build |
 
 ### `devops-agent-cleanup.yml`
@@ -138,6 +139,7 @@ jobs:
       projects-parent-directory: src/
       tests-parent-directory: tests/
       azure-artifacts-source: https://pkgs.dev.azure.com/your-organization/_packaging/your-feed/nuget/v3/index.json
+      myget-source: https://www.myget.org/F/your-feed/api/v3/index.json
       enable-codeql: true
     secrets: inherit
 ```

@@ -24,6 +24,11 @@ on:
         default: ''
         required: false
         type: string
+      myget-source:
+        description: MyGet NuGet v3 source URL.
+        default: https://www.myget.org/F/evilbaschdi/api/v3/index.json
+        required: false
+        type: string
       enable-codeql:
         description: Run CodeQL analysis during the project build.
         default: false
@@ -112,4 +117,5 @@ jobs:
     with:
       artifact-name: ${{ inputs.artifact-name }}
       azure-artifacts-source: ${{ inputs.azure-artifacts-source }}
+      myget-source: ${{ inputs.myget-source }}
     secrets: inherit
