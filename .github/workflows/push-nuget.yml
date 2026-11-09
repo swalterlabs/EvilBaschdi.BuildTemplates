@@ -49,16 +49,35 @@ jobs:
           global-json-file: global.json
 
       - name: Push to Azure Artifacts
-        continue-on-error: true
         env:
           NUGET_AUTH_TOKEN: ${{ secrets.AZURE_ARTIFACTS_PAT }}
           NUGET_SOURCE: ${{ inputs.azure-artifacts-source }}
         run: |
-          if [ -z "$NUGET_AUTH_TOKEN" ] || [ -z "$NUGET_SOURCE" ]; then
+          if [ -z "$NUGET_SOURCE" ]; then
             echo "Azure Artifacts publishing is not configured; skipping."
             exit 0
           fi
-          dotnet nuget push 'packages/*.nupkg' --source "$NUGET_SOURCE" --api-key "$NUGET_AUTH_TOKEN" --skip-duplicate
+          if [ -z "$NUGET_AUTH_TOKEN" ]; then
+            echo "::error::Azure Artifacts source is configured, but AZURE_ARTIFACTS_PAT is unavailable."
+            exit 1
+          fi
+
+          config_file="$RUNNER_TEMP/azure-artifacts.NuGet.Config"
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="utf-8"?>' \
+            '<configuration><packageSources><clear /></packageSources></configuration>' \
+            > "$config_file"
+          dotnet nuget add source "$NUGET_SOURCE" \
+            --name azure-artifacts \
+            --username az \
+            --password "$NUGET_AUTH_TOKEN" \
+            --store-password-in-clear-text \
+            --configfile "$config_file"
+          dotnet nuget push 'packages/*.nupkg' \
+            --source azure-artifacts \
+            --api-key AZ \
+            --skip-duplicate \
+            --configfile "$config_file"
 
       - name: Push to MyGet
         continue-on-error: true

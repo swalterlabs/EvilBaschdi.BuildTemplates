@@ -78,12 +78,10 @@ Important inputs:
 | Input                       | Description                                     |
 | --------------------------- | ----------------------------------------------- |
 | `projects`                  | JSON array of project names                     |
-| `framework`                 | Target framework used for testing               |
+| `framework`                  | Target framework used for testing               |
 | `projects-parent-directory` | Parent directory of the projects                |
 | `tests-parent-directory`    | Parent directory of the test projects           |
 | `artifact-name`             | Package artifact name, default: `Nuget-Package` |
-
-The build and publish jobs run on the organization's `Default` runner group and require a Linux runner with `jq` installed.
 
 ### `build-n-zip.yml`
 
@@ -97,6 +95,8 @@ Downloads NuGet packages from a GitHub artifact and optionally publishes them to
 - `MYGET_API_KEY`
 - `CODEBERG_API_KEY`
 
+When `azure-artifacts-source` is set, `AZURE_ARTIFACTS_PAT` must be available to the calling workflow and have Packaging read/write access to the feed. Azure Artifacts publishing fails explicitly if the PAT is missing or the push fails.
+
 ### `build-n-pack-multi-stage.yml`
 
 Combines `build-n-pack.yml` and `push-nuget.yml` into a complete workflow:
@@ -109,6 +109,14 @@ publish
 ```
 
 The publish job runs only after a successful build.
+
+The multi-stage workflow accepts these additional publishing inputs:
+
+| Input                    | Description                           |
+| ------------------------ | ------------------------------------- |
+| `azure-artifacts-source` | Optional Azure Artifacts NuGet v3 feed URL |
+
+When `azure-artifacts-source` is set, `AZURE_ARTIFACTS_PAT` must be available to the calling workflow and have Packaging read/write access to the feed. Azure Artifacts publishing fails explicitly if the PAT is missing or the push fails.
 
 ### `devops-agent-cleanup.yml`
 
@@ -125,11 +133,12 @@ A calling GitHub workflow can use the multi-stage template as follows:
 ```yaml
 jobs:
   build-and-publish:
-    uses: evilbaschdi/EvilBaschdi.BuildTemplates/.github/workflows/build-n-pack-multi-stage.yml@main
+    uses: swalterlabs/EvilBaschdi.BuildTemplates/.github/workflows/build-n-pack-multi-stage.yml@main
     with:
       projects: '["MyProject"]'
       framework: net10.0
       projects-parent-directory: src/
       tests-parent-directory: tests/
+      azure-artifacts-source: https://pkgs.dev.azure.com/your-organization/_packaging/your-feed/nuget/v3/index.json
     secrets: inherit
 ```
