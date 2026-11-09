@@ -7,6 +7,14 @@ parameters:
     values:
       - net10.0
       - net10.0-windows
+      - net11.0
+      - net11.0-windows
+      - net12.0
+      - net12.0-windows
+      - net13.0
+      - net13.0-windows
+      - net14.0
+      - net14.0-windows
   - name: "projectsParentDirectory"
     type: string
   - name: "testsParentDirectory"

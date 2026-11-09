@@ -27,72 +27,78 @@ on:
 
 jobs:
   build-and-pack:
-    runs-on: windows-latest
+    runs-on:
+      group: Default
+      labels: linux
     env:
       BUILD_CONFIGURATION: Release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up .NET from global.json
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       - name: Restore, build, test, and pack projects
-        shell: pwsh
+        shell: bash
         env:
           PROJECTS: ${{ inputs.projects }}
           PROJECTS_PARENT_DIRECTORY: ${{ inputs.projects-parent-directory }}
           TESTS_PARENT_DIRECTORY: ${{ inputs.tests-parent-directory }}
           TEST_FRAMEWORK: ${{ inputs.framework }}
         run: |
-          $projects = $env:PROJECTS | ConvertFrom-Json
-          $packagesDirectory = Join-Path $env:RUNNER_TEMP packages
-          $testResultsDirectory = Join-Path $env:RUNNER_TEMP TestResults
-          New-Item -ItemType Directory -Force -Path $packagesDirectory, $testResultsDirectory | Out-Null
+          set -euo pipefail
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and length > 0)' <<< "$PROJECTS" >/dev/null
+          mapfile -t projects < <(jq -r '.[]' <<< "$PROJECTS")
+          packages_directory="$RUNNER_TEMP/packages"
+          test_results_directory="$RUNNER_TEMP/TestResults"
+          mkdir -p "$packages_directory" "$test_results_directory"
 
-          foreach ($project in $projects) {
-            $projectFile = "$env:PROJECTS_PARENT_DIRECTORY$project/$project.csproj"
-            $testProjectFile = "$env:TESTS_PARENT_DIRECTORY$project.Tests/$project.Tests.csproj"
+          for project in "${projects[@]}"; do
+            project_file="${PROJECTS_PARENT_DIRECTORY}${project}/${project}.csproj"
+            test_project_file="${TESTS_PARENT_DIRECTORY}${project}.Tests/${project}.Tests.csproj"
+            project_test_results_directory="$test_results_directory/$project"
+            mkdir -p "$project_test_results_directory"
 
-            dotnet restore $projectFile --configfile NuGet.config
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            dotnet restore "$project_file" --configfile NuGet.config
+            dotnet build "$project_file" --configuration "$BUILD_CONFIGURATION" --no-restore
 
-            dotnet build $projectFile --configuration $env:BUILD_CONFIGURATION --no-restore
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if ! dotnet test "$test_project_file" \
+              --configuration "$BUILD_CONFIGURATION" \
+              --framework "$TEST_FRAMEWORK" \
+              --parallel none \
+              --coverage \
+              --coverage-output-format cobertura \
+              --coverage-output "$project_test_results_directory/coverage.cobertura.xml"; then
+              echo "WARNING: Tests failed for $project; continuing to match the Azure DevOps template." >&2
+            fi
 
-            dotnet test $testProjectFile --configuration $env:BUILD_CONFIGURATION --framework --parallel none $env:TEST_FRAMEWORK --coverage --coverage-output-format cobertura --coverage-output "$testResultsDirectory/$project/coverage.cobertura.xml"
-            if ($LASTEXITCODE -ne 0) {
-              Write-Warning "Tests failed for $project; continuing to match the Azure DevOps template."
-            }
-
-            $packArguments = @(
-              "pack", $projectFile,
-              "--configuration", $env:BUILD_CONFIGURATION,
-              "--output", $packagesDirectory,
-              "--no-build"
+            pack_arguments=(
+              pack "$project_file"
+              --configuration "$BUILD_CONFIGURATION"
+              --output "$packages_directory"
+              --no-build
             )
-            if ($env:GITHUB_REF -ne "refs/heads/main") {
-              $packArguments += "--version-suffix"
-              $packArguments += $env:GITHUB_REF_NAME
-            }
+            if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+              pack_arguments+=(--version-suffix "$GITHUB_REF_NAME")
+            fi
 
-            dotnet @packArguments
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
+            dotnet "${pack_arguments[@]}"
+          done
 
       - name: Upload test coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}-coverage
-          path: ${{ runner.temp }}\TestResults\**\coverage.cobertura.xml
+          path: ${{ runner.temp }}/TestResults/**/coverage.cobertura.xml
           if-no-files-found: warn
 
       - name: Upload NuGet packages
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ inputs.artifact-name }}
-          path: ${{ runner.temp }}\packages\*.nupkg
+          path: ${{ runner.temp }}/packages/*.nupkg
           if-no-files-found: warn
