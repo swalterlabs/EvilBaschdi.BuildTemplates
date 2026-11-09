@@ -82,6 +82,7 @@ Important inputs:
 | `projects-parent-directory` | Parent directory of the projects                |
 | `tests-parent-directory`    | Parent directory of the test projects           |
 | `artifact-name`             | Package artifact name, default: `Nuget-Package` |
+| `enable-codeql`             | Run CodeQL analysis during the build             |
 
 ### `build-n-zip.yml`
 
@@ -108,23 +109,20 @@ publish
   -> Publish NuGet packages
 ```
 
-The publish job runs only after a successful build.
+The publish job runs only after a successful build and only for pushes or manual runs with package-relevant changes. Pull requests never publish packages.
 
-The multi-stage workflow accepts these additional publishing inputs:
+Set `enable-codeql` to `true` to run CodeQL analysis as part of the same build. This avoids repeating the .NET compilation for CodeQL. CodeQL-only runs still build and analyze the project without publishing packages.
+
+The multi-stage workflow accepts these additional inputs:
 
 | Input                    | Description                           |
 | ------------------------ | ------------------------------------- |
 | `azure-artifacts-source` | Optional Azure Artifacts NuGet v3 feed URL |
-
-When `azure-artifacts-source` is set, `AZURE_ARTIFACTS_PAT` must be available to the calling workflow and have Packaging read/write access to the feed. Azure Artifacts publishing fails explicitly if the PAT is missing or the push fails.
+| `enable-codeql`          | Run CodeQL analysis during the build |
 
 ### `devops-agent-cleanup.yml`
 
 Cleans up a self-hosted runner. Azure DevOps work directories, .NET SDK files, and stale NuGet packages are removed.
-
-### `codeql.yml`
-
-Runs a CodeQL security analysis for C#. The workflow is triggered by pushes and pull requests targeting the `main` and `develop` branches.
 
 ## Usage example
 
@@ -140,5 +138,6 @@ jobs:
       projects-parent-directory: src/
       tests-parent-directory: tests/
       azure-artifacts-source: https://pkgs.dev.azure.com/your-organization/_packaging/your-feed/nuget/v3/index.json
+      enable-codeql: true
     secrets: inherit
 ```

@@ -24,10 +24,20 @@ on:
         default: Nuget-Package
         required: false
         type: string
+      enable-codeql:
+        description: Run CodeQL analysis during the project build.
+        default: false
+        required: false
+        type: boolean
 
 jobs:
   build-and-pack:
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
     env:
       BUILD_CONFIGURATION: Release
     steps:
@@ -37,6 +47,13 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
+
+      - name: Initialize CodeQL
+        if: inputs.enable-codeql
+        uses: github/codeql-action/init@v4
+        with:
+          languages: csharp
+          build-mode: manual
 
       - name: Restore, build, test, and pack projects
         shell: bash
@@ -79,11 +96,18 @@ jobs:
               --no-build
             )
             if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-              pack_arguments+=(--version-suffix "$GITHUB_REF_NAME")
+              version_suffix="$(printf '%s' "$GITHUB_REF_NAME" | sed -E 's/[^0-9A-Za-z.-]+/-/g; s/^-+|-+$//g')"
+              pack_arguments+=(--version-suffix "$version_suffix")
             fi
 
             dotnet "${pack_arguments[@]}"
           done
+
+      - name: Perform CodeQL Analysis
+        if: inputs.enable-codeql
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:csharp
 
       - name: Upload test coverage
         if: always()

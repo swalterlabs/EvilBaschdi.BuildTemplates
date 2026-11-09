@@ -24,6 +24,11 @@ on:
         default: ''
         required: false
         type: string
+      enable-codeql:
+        description: Run CodeQL analysis during the project build.
+        default: false
+        required: false
+        type: boolean
     secrets:
       AZURE_ARTIFACTS_PAT:
         required: false
@@ -33,7 +38,62 @@ on:
         required: false
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      package-changed: ${{ steps.filter.outputs.package-changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Detect package build changes
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "package-changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "package-changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ ! "$BEFORE_SHA" =~ ^[0-9a-f]{40}$ ]] || ! git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            echo "package-changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          package_changed=false
+          while IFS= read -r path; do
+            case "$path" in
+              src/*|tests/*|global.json|NuGet.config|Directory.Build.props|Directory.Packages.props|.github/workflows/build-and-publish.yml)
+                package_changed=true
+                break
+                ;;
+            esac
+          done < <(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA")
+
+          echo "package-changed=$package_changed" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: changes
+    if: needs.changes.outputs.package-changed == 'true' || inputs.enable-codeql
+    permissions:
+      actions: read
+      contents: read
+      packages: read
+      security-events: write
     uses: ./.github/workflows/build-n-pack.yml
     with:
       projects: ${{ inputs.projects }}
@@ -41,9 +101,13 @@ jobs:
       projects-parent-directory: ${{ inputs.projects-parent-directory }}
       tests-parent-directory: ${{ inputs.tests-parent-directory }}
       artifact-name: ${{ inputs.artifact-name }}
+      enable-codeql: ${{ inputs.enable-codeql }}
 
   publish:
-    needs: build
+    needs:
+      - changes
+      - build
+    if: needs.changes.outputs.package-changed == 'true' && needs.build.result == 'success' && github.event_name != 'pull_request'
     uses: ./.github/workflows/push-nuget.yml
     with:
       artifact-name: ${{ inputs.artifact-name }}
