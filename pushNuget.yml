@@ -50,28 +50,3 @@ jobs:
               echo ""
             done
         continueOnError: true
-
-      - task: Bash@3
-        displayName: "dotnet push Codeberg"
-        inputs:
-          targetType: "inline"
-          script: |
-            packagePath="$(Pipeline.Workspace)/$(Build.SourceBranchName)"
-
-            # Find all .nupkg files
-            packages=$(find "$packagePath" -name "*.nupkg" -type f)
-
-            if [ -z "$packages" ]; then
-              echo "No .nupkg files found in $packagePath"
-              exit 0
-            fi
-
-            echo "Found packages to push:"
-            echo "$packages"
-
-            # Push each package individually
-            for package in $packages; do
-              dotnet nuget push "$package" --api-key "$(Codeberg)" --source "https://codeberg.org/api/packages/evilbaschdi/nuget/index.json"
-              echo ""
-            done
-        continueOnError: true
